@@ -6,8 +6,8 @@ The standalone bundle was launched without the development virtual environment. 
 
 These are development checks, not certification across all Linux distributions or graphics drivers. DRM playback is not supported. The AppImage is generated under `dist/` and is not stored in Git.
 
-## Windows release status
+## Casting edition
 
-Windows **v0.1.4** is available alongside the Linux AppImage in the [v0.1.4 release](https://github.com/Pags-git/Still/releases/tag/v0.1.4), as `Still.Installer.exe` with `Still.Installer.exe.sha256`.
+The Linux casting build bundles PyChromecast, discovery dependencies and the DLNA adapter. Development checks cover token-protected streaming, HTTP byte ranges, shared discovery and controls, DLNA SOAP commands, screen bounds for the compact panel, and packaged startup. Pags confirmed Sony Google Cast playback. Samsung DLNA playback still needs testing.
 
-The installer was supplied by Pags. Publication checks verified the uploaded file's size and SHA-256 hash against the supplied binary; the v0.1.4 installer was not executed on Windows during this workflow. Pags previously reported successful manual testing of the earlier Windows build. These Linux development checks should not be interpreted as Windows v0.1.4 runtime test results.
+No Windows casting installer is provided. Windows v0.1.4 downloads in the original Still repository belong to the non-casting player.

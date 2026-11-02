@@ -10,14 +10,15 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVi
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QFrame, QGridLayout, QGraphicsOpacityEffect, QGraphicsScene, QGraphicsView,
-    QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSlider, QStyle, QStyleOptionSlider, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QSlider, QStyle, QStyleOptionSlider, QVBoxLayout, QWidget,
 )
 
 
 from subtitles import SubtitleTrack, embedded_text
 from single_instance import SingleInstance
+from casting import CastManager
 
-APP_VERSION = '0.1.4'
+APP_VERSION = '0.1.5-casting'
 
 def timestamp(ms):
     seconds = max(0, ms // 1000)
@@ -192,11 +193,14 @@ class ResizeHandle(QWidget):
 class Player(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Still — Qt Video Player')
-        self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, 'Still', 'Still')
+        self.setWindowTitle('Still Casting — Qt Video Player')
+        self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, 'Still', 'Still-Casting')
         self.remember_position = self.settings.value('playback/remember', True, type=bool)
         self._resume_key = None
         self._resume_position = None
+        self.cast_manager = CastManager(self)
+        self.cast_dialog = None
+        self.cast_manager.started.connect(self.cast_started)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
@@ -675,6 +679,8 @@ class Player(QWidget):
         subtitles.setTitle('Subtitles')
         menu.addMenu(subtitles)
         menu.addMenu(self.create_audio_menu(menu))
+        cast = menu.addAction('Cast…')
+        cast.triggered.connect(self.show_cast_dialog)
         remember = menu.addAction('Remember playback position')
         remember.setCheckable(True)
         remember.setChecked(self.remember_position)
@@ -686,6 +692,126 @@ class Player(QWidget):
         about = menu.addAction('About Still')
         about.triggered.connect(self.show_about)
         return menu
+
+    def cast_started(self, name, filename):
+        if self.media.source().toLocalFile() != filename:
+            self.cast_manager.command('stop')
+            return
+        self.media.pause()
+        self.show_playback_feedback(f'Casting to {name}')
+
+    def show_cast_dialog(self):
+        if self.cast_dialog is None:
+            dialog = RoundedDialog(self, Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+            dialog.setWindowTitle('Still — Cast to TV')
+            dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            dialog.setObjectName('castPanel')
+            dialog.setStyleSheet('''
+                QDialog#castPanel { background: transparent; }
+                QDialog#castPanel QPushButton { padding: 6px 9px; }
+                QDialog#castPanel QListWidget { background: #11161c; border: 1px solid #303842; border-radius: 8px; }
+                QDialog#castPanel QListWidget::item { padding: 6px; }
+                QDialog#castPanel QListWidget::item:selected { background: #394650; color: white; }
+            ''')
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(14, 12, 14, 12)
+            layout.setSpacing(8)
+            header = QHBoxLayout()
+            heading = QLabel('Cast to TV', dialog)
+            heading.setStyleSheet('color: #c9e7b5; font-size: 16px;')
+            header.addWidget(heading, 1)
+            close = QPushButton('×', dialog)
+            close.setToolTip('Close panel')
+            close.clicked.connect(dialog.hide)
+            header.addWidget(close)
+            layout.addLayout(header)
+            hint = QLabel('TVs on your network', dialog)
+            hint.setToolTip('The TV must support the video format. Subtitles and audio-track selection stay on the local player.')
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+            devices = QListWidget(dialog)
+            devices.setMinimumHeight(64)
+            layout.addWidget(devices, 1)
+            status = QLabel('Searching for TVs…', dialog)
+            status.setWordWrap(True)
+            status.setFixedHeight(64)
+            layout.addWidget(status)
+            row = QHBoxLayout()
+            refresh = QPushButton('Refresh', dialog)
+            start = QPushButton('Start casting', dialog)
+            row.addWidget(refresh)
+            row.addWidget(start)
+            layout.addLayout(row)
+            controls = QHBoxLayout()
+            cast_controls = []
+            for label, command in (('Play', 'play'), ('Pause', 'pause'), ('Stop casting', 'stop')):
+                button = QPushButton(label, dialog)
+                button.setEnabled(False)
+                cast_controls.append(button)
+                button.clicked.connect(lambda checked=False, cmd=command: self.cast_manager.command(cmd))
+                controls.addWidget(button)
+            layout.addLayout(controls)
+
+            def found(entries):
+                selected = devices.currentItem()
+                selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
+                devices.clear()
+                selected_row = 0
+                for identifier, name in entries:
+                    if identifier == selected_id:
+                        selected_row = devices.count()
+                    item = QListWidgetItem(name)
+                    item.setData(Qt.ItemDataRole.UserRole, identifier)
+                    devices.addItem(item)
+                if entries:
+                    devices.setCurrentRow(selected_row)
+                status.setText(f'Found {len(entries)} device(s). Select your TV, then press Start casting.' if entries else
+                    'No TVs found. Check the TV is on, casting or media sharing is enabled, and both devices are on the same network.')
+
+            def cast_video():
+                item = devices.currentItem()
+                filename = self.media.source().toLocalFile()
+                if item is None or not filename:
+                    status.setText('Load a video and select a TV first.')
+                    return
+                status.setText('Connecting to TV…')
+                self.cast_manager.start(item.data(Qt.ItemDataRole.UserRole), filename, self.media.position())
+
+            self.cast_manager.devices_found.connect(found)
+            self.cast_manager.status.connect(status.setText)
+            self.cast_manager.failed.connect(lambda error: status.setText(f'Could not cast: {error}'))
+            self.cast_manager.busy.connect(lambda busy: (refresh.setEnabled(not busy), start.setEnabled(not busy)))
+            self.cast_manager.active_changed.connect(lambda active: [button.setEnabled(active) for button in cast_controls])
+            refresh.clicked.connect(self.cast_manager.discover)
+            start.clicked.connect(cast_video)
+            dialog.setFixedSize(300, 340)
+            self.cast_dialog = dialog
+            self.cast_manager.discover()
+        self.cast_dialog.show()
+        self.position_cast_panel()
+        self.cast_dialog.raise_()
+        self.cast_dialog.activateWindow()
+
+    def position_cast_panel(self):
+        panel = getattr(self, 'cast_dialog', None)
+        if panel is None or not panel.isVisible():
+            return
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        main = self.frameGeometry()
+        x = main.right() + 9
+        if x + panel.width() > available.right() + 1:
+            # Prefer the other side to covering the picture on smaller displays.
+            x = main.left() - panel.width() - 8
+        x = max(available.left(), min(x, available.right() - panel.width() + 1))
+        y = max(available.top(), min(main.top(), available.bottom() - panel.height() + 1))
+        panel.move(x, y)
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self.position_cast_panel()
 
     def show_about(self):
         dialog = RoundedDialog(self, Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
@@ -1283,6 +1409,7 @@ class Player(QWidget):
             handle.raise_()
 
     def resizeEvent(self, event):
+        self.position_cast_panel()
         self.view.setGeometry(self.rect())
         size = self.size()
         self.video.setSize(QSizeF(size))
@@ -1328,6 +1455,7 @@ class Player(QWidget):
                 break
 
     def closeEvent(self, event):
+        self.cast_manager.close()
         self.save_playback_position()
         self.window_resize.stop()
         self.feedback_hold.stop()
@@ -1364,7 +1492,7 @@ def main():
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferQuality)
     font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     app.setFont(font)
-    app.setApplicationName('Still')
+    app.setApplicationName('Still Casting')
     app.setApplicationVersion(APP_VERSION)
     app.setDesktopFileName('still')
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / 'packaging' / 'still.png')))
@@ -1372,7 +1500,8 @@ def main():
     if len(sys.argv) > 1:
         url = QUrl(sys.argv[1])
         filename = str(Path(url.toLocalFile() if url.isLocalFile() else sys.argv[1]).expanduser().resolve())
-    instance = SingleInstance(app)
+    import os
+    instance = SingleInstance(app, identity=f'still-casting:{Path.home()}:{os.environ.get("WAYLAND_DISPLAY", os.environ.get("DISPLAY", "desktop"))}')
     try:
         if instance.start_or_forward(filename):
             return 0

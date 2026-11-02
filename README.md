@@ -1,4 +1,14 @@
-# Still
+# Still Casting
+
+## Casting development branch
+
+This separate source checkout adds **☰ → Cast…** for Google Cast-enabled TVs, including Sony Google TV, and DLNA/UPnP AVTransport renderers such as compatible Samsung TVs. Both appear in one list and use the same **Start casting**, Play, Pause and Stop casting buttons. Install `requirements.txt`, open a local video, choose **Cast…**, select the TV and press **Start casting**. Use **Refresh** to scan again. Closing the panel leaves casting running, while closing the player stops it. If a TV advertises both protocols at the same address, Google Cast is preferred.
+
+The computer and TV must share a reachable local network with Google Cast or media sharing enabled. Discovery uses multicast DNS for Google Cast and SSDP for DLNA; the TV must also be able to reach the temporary HTTP port on the computer. Guest-network isolation or firewall rules can prevent this. Samsung may ask you to allow the computer to share media. Only the selected video is served, using an unguessable URL, while the cast session is active. Keep the computer awake.
+
+This is direct file casting, without transcoding. Format support depends on the TV; start with an H.264/AAC MP4. The local subtitle overlay and selected audio track are not transferred to the TV. The cast begins from the current local position; local playback pauses when the receiver reports playback ready. The main playback controls continue to control the local player; use the casting panel or TV remote for the TV. TV playback positions are not written back to local resume history.
+
+The casting player has a separate single-instance identity and settings file from the original Still. Sony Google Cast playback was confirmed by Pags. DLNA descriptions, control requests and shared-button routing have automated tests; physical Samsung playback still needs testing. DLNA seeking may be unsupported on some TVs, in which case playback starts from the beginning and the panel reports this. The Linux casting AppImage includes both Google Cast and DLNA support; Samsung playback remains unverified.
 
 <img src="packaging/still-128.png" width="80" alt="Still icon">
 
@@ -8,20 +18,19 @@ A minimalist, frameless video player built with Python, Qt6 and PySide6.
 
 ![Still welcome screen](docs/screenshot.png)
 
-## Downloads — v0.1.4
+## Download — v0.1.5-casting
 
-Both Linux and Windows downloads are available in the [Still v0.1.4 release](https://github.com/Pags-git/Still/releases/tag/v0.1.4):
+This is an experimental casting edition of [Still](https://github.com/Pags-git/Still), maintained separately so the original player remains independent.
 
-- **Windows v0.1.4:** download [Still.Installer.exe](https://github.com/Pags-git/Still/releases/download/v0.1.4/Still.Installer.exe) and run the installer. No separate Python installation is needed.
-- **Linux x86_64 v0.1.4:** download [Still-x86_64.AppImage](https://github.com/Pags-git/Still/releases/download/v0.1.4/Still-x86_64.AppImage), make it executable and launch it.
+Download the Linux x86_64 [Still-Casting-x86_64.AppImage](https://github.com/Pags-git/Still-casting/releases/download/v0.1.5-casting/Still-Casting-x86_64.AppImage) and its checksum from the [casting release](https://github.com/Pags-git/Still-casting/releases/tag/v0.1.5-casting).
 
-SHA-256 checksum files accompany both downloads. To inspect the Windows installer hash in PowerShell:
-
-```powershell
-Get-FileHash ".\Still.Installer.exe" -Algorithm SHA256
+```sh
+sha256sum -c Still-Casting-x86_64.AppImage.sha256
+chmod +x Still-Casting-x86_64.AppImage
+./Still-Casting-x86_64.AppImage
 ```
 
-Compare the result with `Still.Installer.exe.sha256` from the same release. **☰ → About Still** displays the app version.
+If FUSE is unavailable, add `--appimage-extract-and-run`. Windows casting builds are not provided in this repository. The Windows installer in the original Still repository does not include casting.
 
 ## Features
 
@@ -55,7 +64,7 @@ Open a local file directly:
 python player.py "/path/to/video.mkv"
 ```
 
-On Windows, use `py -m venv .venv`, activate with `.venv\Scripts\activate`, and run with `python`. A packaged Windows v0.1.4 installer is also available above.
+On Windows, use `py -m venv .venv`, activate with `.venv\Scripts\activate`, and run with `python`. The casting edition has not been packaged or validated on Windows.
 
 Opening Still without a file shows its welcome screen. Opening a file directly skips that screen and starts with controls hidden until pointer movement or re-entry. Close previous versions completely before trying an updated build.
 
@@ -96,19 +105,19 @@ pip install -r requirements-build.txt
 python build_appimage.py
 ```
 
-Output: `dist/Still-x86_64.AppImage`, with a SHA-256 checksum alongside it. Build intermediates are under `work/appimage/` and are excluded from Git.
+Output: `dist/Still-Casting-x86_64.AppImage`, with a SHA-256 checksum alongside it. Build intermediates are under `work/appimage/` and are excluded from Git.
 
 The image bundles Python, PySide6, Qt, multimedia libraries and PyAV. The host still provides graphics drivers, desktop/display and audio services, and baseline Linux libraries. The current build was made on Zorin OS 18.1 / Ubuntu 24.04 (glibc 2.39); compatibility with older Linux systems is not guaranteed.
 
 ```sh
-chmod +x dist/Still-x86_64.AppImage
-./dist/Still-x86_64.AppImage
+chmod +x dist/Still-Casting-x86_64.AppImage
+./dist/Still-Casting-x86_64.AppImage
 ```
 
 If FUSE is unavailable:
 
 ```sh
-./dist/Still-x86_64.AppImage --appimage-extract-and-run
+./dist/Still-Casting-x86_64.AppImage --appimage-extract-and-run
 ```
 
 The builder downloads the official `appimagetool` and checks its checksum. Its continuous release URL can change; a changed download is rejected until the checksum is reviewed. Large binaries are not committed to this source repository.
@@ -117,7 +126,7 @@ The builder downloads the official `appimagetool` and checks its checksum. Its c
 
 Playback is provided by Qt Multimedia/FFmpeg. MKV and MP4 playback, H.264/H.265 content, embedded text subtitles and external SRT/VTT have been exercised during development. Other containers/codecs depend on the bundled backend; a filename extension alone does not guarantee playback. DRM-protected content is not supported.
 
-Development checks covered subtitle parsing, forced flags, seek previews, OSD/notification timing, fullscreen restoration, resize geometry, single-instance handoff and crash recovery, plus standalone Linux startup. Windows v0.1.4 is distributed as an installer supplied by Pags; its uploaded SHA-256 hash was verified, but this installer was not executed on Windows during publication. Pags previously reported successful manual testing of the earlier Windows build. Hardware acceleration, unusual codecs and broader platform coverage need further testing.
+Development checks covered subtitle parsing, forced flags, seek previews, OSD/notification timing, fullscreen restoration, resize geometry, single-instance handoff and crash recovery, plus standalone Linux startup. The casting edition adds automated checks for DLNA descriptions and SOAP commands, shared casting controls and discovery deduplication. Sony Google Cast playback was confirmed by Pags. Samsung DLNA playback and Windows casting remain unverified.
 
 ## Project files
 

@@ -26,6 +26,7 @@ def main():
     OUTPUT.mkdir(exist_ok=True)
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
         '--name', 'Still', '--onedir', '--windowed',
+        '--collect-submodules', 'pychromecast',
         '--add-data', str(ROOT / 'packaging' / 'still.png') + ':packaging',
         '--specpath', str(WORK), '--workpath', str(WORK / 'build'),
         '--distpath', str(WORK / 'dist'), str(ROOT / 'player.py'))
@@ -46,7 +47,7 @@ def main():
     # Include the editable application source and documentation inside the image.
     source = appdir / 'usr' / 'share' / 'still'
     source.mkdir(parents=True)
-    for name in ('player.py', 'subtitles.py', 'forced_subtitles.py', 'single_instance.py', 'requirements.txt', 'README.md'):
+    for name in ('player.py', 'casting.py', 'dlna.py', 'subtitles.py', 'forced_subtitles.py', 'single_instance.py', 'requirements.txt', 'README.md'):
         shutil.copy2(ROOT / name, source / name)
     tool = WORK / 'appimagetool.AppImage'
     if not tool.exists():
@@ -55,8 +56,8 @@ def main():
         raise SystemExit('appimagetool checksum changed; verify the official release before updating TOOL_SHA256.')
     tool.chmod(0o755)
     run(str(tool), '--appimage-extract', cwd=WORK, stdout=subprocess.DEVNULL)
-    destination = OUTPUT / 'Still-x86_64.AppImage'
-    temporary = OUTPUT / 'Still-x86_64.build.AppImage'
+    destination = OUTPUT / 'Still-Casting-x86_64.AppImage'
+    temporary = OUTPUT / 'Still-Casting-x86_64.build.AppImage'
     if temporary.exists():
         temporary.unlink()
     env = dict(os.environ, ARCH='x86_64')
@@ -65,7 +66,7 @@ def main():
     temporary.replace(destination)
     destination.chmod(0o755)
     checksum = hashlib.sha256(destination.read_bytes()).hexdigest()
-    (OUTPUT / 'Still-x86_64.AppImage.sha256').write_text(f'{checksum}  {destination.name}\n')
+    (OUTPUT / 'Still-Casting-x86_64.AppImage.sha256').write_text(f'{checksum}  {destination.name}\n')
     print(f'Built {destination}')
 
 
