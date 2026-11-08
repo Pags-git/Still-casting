@@ -18,13 +18,18 @@ from subtitles import SubtitleTrack, embedded_text
 from single_instance import SingleInstance
 from casting import CastManager
 
-APP_VERSION = '0.1.5-casting'
+APP_VERSION = '0.1.6-casting'
 
 def timestamp(ms):
     seconds = max(0, ms // 1000)
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
     return f'{hours}:{minutes:02}:{seconds:02}' if hours else f'{minutes}:{seconds:02}'
+
+
+def can_resume_at(position, duration):
+    # Treat the final 5% as finished, with at most 30 seconds excluded.
+    return 0 < position < duration - min(duration // 20, 30000)
 
 
 def apply_rounded_mask(widget, radius):
@@ -423,9 +428,9 @@ class Player(QWidget):
         self.media.durationChanged.connect(self.duration_changed)
         self.media.seekableChanged.connect(self.seek.setEnabled)
         self.media.seekableChanged.connect(lambda _: self.restore_playback_position())
-        self.media.mediaStatusChanged.connect(lambda _: self.restore_playback_position())
+        self.media.mediaStatusChanged.connect(self.media_status_changed)
         self.media.playbackStateChanged.connect(self.playback_changed)
-        self.media.errorOccurred.connect(lambda error, message: self.message(message))
+        self.media.errorOccurred.connect(self.playback_error)
         self.audio.mutedChanged.connect(lambda muted: self.mute_button.setText('Unmute' if muted else 'Mute'))
         self.shortcut_bindings = [
             ('Space', 'Play / pause', self.toggle_play),
@@ -535,9 +540,39 @@ class Player(QWidget):
         self._resume_position = (self.settings.value(f'positions/{self._resume_key}', 0, type=int)
                                  if self.remember_position else None)
         self.media.setSource(QUrl.fromLocalFile(str(path)))
+        if self.media.source().isEmpty():
+            return
         self.media.play()
+        if self.media.source().isEmpty():
+            return
         self.start_forced_probe(path)
         self.show_osd()
+
+    def media_status_changed(self, status):
+        if self._waiting_for_video_frame and status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.playback_error(None, 'This file did not produce a video frame.')
+            return
+        self.restore_playback_position()
+
+    def playback_error(self, _error, message):
+        if self._waiting_for_video_frame:
+            self._waiting_for_video_frame = False
+            self._fit_video_on_load = False
+            self._resume_key = None
+            self._resume_position = None
+            self._quiet_file_start = False
+            self._probe_generation += 1
+            if self._forced_probe is not None:
+                self._forced_probe.kill()
+                self._forced_probe = None
+            self.media.stop()
+            self.media.setSource(QUrl())
+            self.loading_cover.hide()
+            self.title.setText('STILL')
+            self.empty.show()
+            self.layout_splash_credit()
+            self.show_osd()
+        self.message(message)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -572,14 +607,13 @@ class Player(QWidget):
         height = width / ratio
         scale = min(1.0, available.width() / width, available.height() / height)
         size = QSizeF(width * scale, height * scale).toSize()
+        # Keep the control overlays usable even when the picture must letterbox.
+        size = size.expandedTo(self.minimumSize())
         target = QRect(previous)
         target.setSize(size)
         target.moveCenter(previous.center())
         target.moveLeft(max(available.left(), min(target.left(), available.right() - size.width() + 1)))
         target.moveTop(max(available.top(), min(target.top(), available.bottom() - size.height() + 1)))
-        # Unusual portrait/widescreen files may need a smaller minimum in one
-        # dimension to fit the display without introducing letterboxing.
-        self.setMinimumSize(min(520, size.width()), min(320, size.height()))
         self._fit_video_on_load = False
         if self.isFullScreen():
             self._normal_geometry = target
@@ -855,7 +889,7 @@ class Player(QWidget):
             return
         position = self._resume_position
         self._resume_position = None
-        if 0 < position < max(0, duration - 30000):
+        if can_resume_at(position, duration):
             self.media.setPosition(position)
 
     def save_playback_position(self):
@@ -866,7 +900,7 @@ class Player(QWidget):
             if self._resume_position is not None:
                 # Closing before loading finishes must not erase existing history.
                 pass
-            elif 0 < position < max(0, self.media.duration() - 30000):
+            elif can_resume_at(position, self.media.duration()):
                 self.settings.setValue(key, position)
             else:
                 self.settings.remove(key)
