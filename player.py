@@ -18,7 +18,7 @@ from subtitles import SubtitleTrack, embedded_text
 from single_instance import SingleInstance
 from casting import CastManager
 
-APP_VERSION = '0.1.6-casting'
+APP_VERSION = '0.1.7-casting'
 
 def timestamp(ms):
     seconds = max(0, ms // 1000)
@@ -319,6 +319,8 @@ class Player(QWidget):
         self.top = QFrame(self)
         self.top.setObjectName('osd')
         top_layout = QHBoxLayout(self.top)
+        top_layout.setContentsMargins(9, 5, 9, 5)
+        top_layout.setSpacing(5)
         self.title = QLabel('STILL', self.top)
         self.title.setMouseTracking(True)
         self.title.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -330,9 +332,12 @@ class Player(QWidget):
         self.controls = QFrame(self)
         self.controls.setObjectName('osd')
         controls_layout = QVBoxLayout(self.controls)
+        controls_layout.setContentsMargins(9, 5, 9, 5)
+        controls_layout.setSpacing(4)
         self.seek = SeekSlider(self.controls)
         self.seek.setRange(0, 10000)
         self.seek.setTracking(True)
+        self.seek.setMinimumHeight(20)
         self.seek.setEnabled(False)
         self.seek.setAccessibleName('Seek')
         self.seek.sliderPressed.connect(self.begin_seek)
@@ -340,6 +345,7 @@ class Player(QWidget):
         self.seek.valueChanged.connect(self.seek_changed)
         controls_layout.addWidget(self.seek)
         row = QHBoxLayout()
+        row.setSpacing(5)
         self.play_button = self.button(row, '▶', 'Play / pause (Space)', self.toggle_play)
         self.time = QLabel('0:00 / 0:00', self.controls)
         row.addWidget(self.time)
@@ -460,6 +466,7 @@ class Player(QWidget):
             QMenu::item:disabled { color: #89939f; }
             QMenu::separator { height: 1px; background: #46505b; margin: 5px 8px; }
             QPushButton { background: #263129; color: #c9e7b5; border: none; border-radius: 7px; padding: 9px 13px; }
+            QFrame#osd QPushButton { padding: 6px 10px; }
             QPushButton:hover { background: #3a4740; }
             QPushButton:focus { border: 1px solid #c9e7b5; }
             QSlider { background: transparent; }
@@ -1450,9 +1457,9 @@ class Player(QWidget):
         self.scene.setSceneRect(QRectF(0, 0, size.width(), size.height()))
         self.empty.setGeometry(self.rect())
         self.loading_cover.setGeometry(self.rect())
-        self.top.setGeometry(16, 16, self.width() - 32, 58)
+        self.top.setGeometry(16, 16, self.width() - 32, 44)
         width = min(760, self.width() - 32)
-        self.controls.setGeometry((self.width() - width) // 2, self.height() - 116, width, 92)
+        self.controls.setGeometry((self.width() - width) // 2, self.height() - 92, width, 68)
         self.layout_splash_credit()
         self.layout_resize_handles()
         self.notice.setGeometry(40, 90, self.width() - 80, 70)
